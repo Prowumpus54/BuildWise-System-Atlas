@@ -5,7 +5,10 @@ const COMMANDS=Object.freeze({'health.check':{method:'GET',path:'/api/health'}})
 function safeEqual(a,b){const x=crypto.createHash('sha256').update(String(a)).digest(),y=crypto.createHash('sha256').update(String(b)).digest();return crypto.timingSafeEqual(x,y)}
 function createGateway({token,port=7336,upstream='http://127.0.0.1:7331',auditPath=path.join(__dirname,'runtime','atlas-command-audit.jsonl'),fetcher=fetch,verifyBuildWiseSession=null}={}){
  if(typeof token!=='string'||token.length<32)throw Error('ATLAS_OWNER_TOKEN must be a high-entropy secret of at least 32 characters');
- let sequence=0;const seen=new Map();
+ let sequence=0;const seen=new Map();const replayPath=path.join(path.dirname(auditPath),'atlas-replay.jsonl');
+ fs.mkdirSync(path.dirname(replayPath),{recursive:true});
+ if(fs.existsSync(replayPath)){for(const line of fs.readFileSync(replayPath,'utf8').split('\n')){if(!line.trim())continue;let entry;try{entry=JSON.parse(line)}catch{throw Error('replay journal corrupt: refusing startup')}if(typeof entry.id!=='string'||!Number.isFinite(entry.at))throw Error('replay journal invalid: refusing startup');if(Date.now()-entry.at<300000)seen.set(entry.id,entry.at)}}
+ function recordReplay(id,at){fs.appendFileSync(replayPath,JSON.stringify({id,at})+'\n',{encoding:'utf8',flag:'a',mode:0o600})}
  function audit(record){fs.mkdirSync(path.dirname(auditPath),{recursive:true});fs.appendFileSync(auditPath,JSON.stringify({at:new Date().toISOString(),id:crypto.randomUUID(),...record})+'\n',{encoding:'utf8',flag:'a',mode:0o600})}
  function reply(res,status,body){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':ORIGIN,'access-control-allow-headers':'authorization, content-type, x-atlas-request-id','access-control-allow-methods':'POST, OPTIONS','vary':'Origin'});res.end(JSON.stringify(body))}
  const server=http.createServer(async(req,res)=>{
@@ -22,6 +25,7 @@ function createGateway({token,port=7336,upstream='http://127.0.0.1:7331',auditPa
   const now=Date.now();for(const [id,at] of seen){if(now-at>300000)seen.delete(id)}
   if(seen.has(requestId)){audit({action,requestId,result:'denied-replay'});reply(res,409,{error:'duplicate request'});return}
   if(seen.size>=10000){audit({action,requestId,result:'denied-capacity'});reply(res,503,{error:'request capacity reached'});return}
+  try{recordReplay(requestId,now)}catch{audit({action,requestId,result:'denied-replay-storage'});reply(res,503,{error:'request journal unavailable'});return}
   seen.set(requestId,now);
   if(action!=='health.check'){audit({action:action.slice(0,80),requestId,result:'denied-action'});reply(res,403,{error:'action not authorized'});return}
   if(verifyBuildWiseSession){let authenticated=false;try{authenticated=await verifyBuildWiseSession(bearer.slice(7))}catch{}if(authenticated!==true){audit({action,requestId,result:'denied-buildwise-session'});reply(res,403,{error:'BuildWise session not authorized'});return}}

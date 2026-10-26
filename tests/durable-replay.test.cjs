@@ -1,0 +1,7 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {createGateway}=require('../owner-gateway.cjs');
+const token='synthetic-testing-key-0123456789012345',origin='https://prowumpus54.github.io';
+async function run(server,body){await new Promise(r=>server.listen(0,'127.0.0.1',r));try{return await fetch('http://127.0.0.1:'+server.address().port+'/atlas/command',{method:'POST',headers:{origin,authorization:'Bearer '+token,'x-atlas-request-id':'persist-request-01'},body:JSON.stringify({action:'health.check'})})}finally{await new Promise(r=>server.close(r))}}
+test('replay survives restart',async()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'atlas-durable-'));const settings={token,auditPath:path.join(dir,'audit.jsonl'),verifyBuildWiseSession:async()=>true,fetcher:async()=>({ok:true,json:async()=>({ok:true})})};try{assert.equal((await run(createGateway(settings))).status,200);assert.equal((await run(createGateway(settings))).status,409)}finally{fs.rmSync(dir,{recursive:true,force:true})}});
+test('corrupt journal fails closed',()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'atlas-corrupt-'));try{fs.writeFileSync(path.join(dir,'atlas-replay.jsonl'),'not-json\n');assert.throws(()=>createGateway({token,auditPath:path.join(dir,'audit.jsonl')}),/journal corrupt/)}finally{fs.rmSync(dir,{recursive:true,force:true})}});
