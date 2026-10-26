@@ -1,5 +1,6 @@
 'use strict';
 const http=require('node:http'),crypto=require('node:crypto');
+const {validateTelemetry}=require('./telemetry-schema.cjs');
 function equal(a,b){const x=crypto.createHash('sha256').update(String(a)).digest(),y=crypto.createHash('sha256').update(String(b)).digest();return crypto.timingSafeEqual(x,y)}
 function createTelemetryRelay({publisherToken,viewerToken,ttlMs=30000,now=Date.now}={}){
  if(typeof publisherToken!=='string'||publisherToken.length<32||typeof viewerToken!=='string'||viewerToken.length<32||equal(publisherToken,viewerToken))throw Error('DISTINCT_RELAY_CREDENTIALS_REQUIRED');
@@ -17,7 +18,7 @@ function createTelemetryRelay({publisherToken,viewerToken,ttlMs=30000,now=Date.n
    let payload;try{payload=JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{reply(res,400,{error:'invalid JSON'});return}
    if(payload?.schema!=='buildwise.atlas.snapshot.v1'||!Number.isFinite(Date.parse(payload.sentAt))||Math.abs(now()-Date.parse(payload.sentAt))>60000){reply(res,400,{error:'invalid or stale snapshot'});return}
    const allowed=new Set(['schema','sentAt','source','sampledAt','totalJobs','activeJobs','errors','jobs','agents','events','resources']);
-   if(Object.keys(payload).some(k=>!allowed.has(k))){reply(res,400,{error:'unexpected fields'});return}
+   if(!validateTelemetry(payload)){reply(res,400,{error:'unexpected fields'});return}
    if(deliveryId===id){reply(res,409,{error:'duplicate delivery'});return}
    latest=payload;receivedAt=now();deliveryId=id;reply(res,202,{accepted:true});return
   }
