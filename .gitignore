@@ -1,0 +1,5 @@
+runtime/
+.env
+.env.*
+node_modules/
+*.log
