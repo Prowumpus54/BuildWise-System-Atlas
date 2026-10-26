@@ -8,7 +8,7 @@ function createGateway({token,port=7336,upstream='http://127.0.0.1:7331',auditPa
  let sequence=0;const seen=new Map();const replayPath=path.join(path.dirname(auditPath),'atlas-replay.jsonl');
  fs.mkdirSync(path.dirname(replayPath),{recursive:true});
  if(fs.existsSync(replayPath)){for(const line of fs.readFileSync(replayPath,'utf8').split('\n')){if(!line.trim())continue;let entry;try{entry=JSON.parse(line)}catch{throw Error('replay journal corrupt: refusing startup')}if(typeof entry.id!=='string'||!Number.isFinite(entry.at))throw Error('replay journal invalid: refusing startup');if(Date.now()-entry.at<300000)seen.set(entry.id,entry.at)}}
- function recordReplay(id,at){fs.appendFileSync(replayPath,JSON.stringify({id,at})+'\n',{encoding:'utf8',flag:'a',mode:0o600})}
+ function recordReplay(id,at){const entry=Buffer.from(JSON.stringify({id,at})+'\n');const fd=fs.openSync(replayPath,'a',0o600);try{if(fs.fstatSync(fd).size+entry.length>1024*1024)throw Error('replay journal capacity reached');fs.writeSync(fd,entry,0,entry.length);fs.fsyncSync(fd)}finally{fs.closeSync(fd)}}
  function audit(record){fs.mkdirSync(path.dirname(auditPath),{recursive:true});fs.appendFileSync(auditPath,JSON.stringify({at:new Date().toISOString(),id:crypto.randomUUID(),...record})+'\n',{encoding:'utf8',flag:'a',mode:0o600})}
  function reply(res,status,body){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':ORIGIN,'access-control-allow-headers':'authorization, content-type, x-atlas-request-id','access-control-allow-methods':'POST, OPTIONS','vary':'Origin'});res.end(JSON.stringify(body))}
  const server=http.createServer(async(req,res)=>{
