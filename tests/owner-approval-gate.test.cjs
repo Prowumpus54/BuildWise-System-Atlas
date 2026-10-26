@@ -1,0 +1,11 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {createOwnerApprovalGate}=require('../owner-approval-gate.cjs');
+const base={action:'health.check',requestId:'approval-case-1'};
+test('missing authority fails closed',()=>assert.throws(()=>createOwnerApprovalGate(),/REQUIRED/));
+test('exact trusted approval binds action, request and expiration',async()=>{let time=1000;const gate=createOwnerApprovalGate({now:()=>time,requestApproval:async q=>({authorized:true,...q})});assert.equal(await gate(base),true)});
+test('denial does not authorize',async()=>{const gate=createOwnerApprovalGate({requestApproval:async q=>({...q,authorized:false})});assert.equal(await gate(base),false)});
+test('wrong request cannot be replayed',async()=>{const gate=createOwnerApprovalGate({requestApproval:async q=>({...q,requestId:'other',authorized:true})});assert.equal(await gate(base),false)});
+test('expired approval fails',async()=>{let time=1000;const gate=createOwnerApprovalGate({now:()=>time,timeoutMs:60,requestApproval:async q=>{time=1060;return {...q,authorized:true}}});assert.equal(await gate(base),false)});
+test('cancelled approval fails',async()=>{const c=new AbortController();c.abort();const gate=createOwnerApprovalGate({requestApproval:async q=>({...q,authorized:true})});assert.equal(await gate({...base,signal:c.signal}),false)});
+test('owner channel restart/unavailable denies',async()=>{const gate=createOwnerApprovalGate({requestApproval:async()=>{throw Error('connection reset')}});assert.equal(await gate(base),false)});

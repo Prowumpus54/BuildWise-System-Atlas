@@ -3,7 +3,7 @@ const http=require('node:http'),crypto=require('node:crypto'),fs=require('node:f
 const ORIGIN='https://prowumpus54.github.io';
 const COMMANDS=Object.freeze({'health.check':{method:'GET',path:'/api/health'}});
 function safeEqual(a,b){const x=crypto.createHash('sha256').update(String(a)).digest(),y=crypto.createHash('sha256').update(String(b)).digest();return crypto.timingSafeEqual(x,y)}
-function createGateway({token,port=7336,upstream='http://127.0.0.1:7331',auditPath=path.join(__dirname,'runtime','atlas-command-audit.jsonl'),fetcher=fetch,verifyBuildWiseSession=null}={}){
+function createGateway({token,port=7336,upstream='http://127.0.0.1:7331',auditPath=path.join(__dirname,'runtime','atlas-command-audit.jsonl'),fetcher=fetch,verifyBuildWiseSession=null,authorizeOwner=null}={}){
  if(typeof token!=='string'||token.length<32)throw Error('ATLAS_OWNER_TOKEN must be a high-entropy secret of at least 32 characters');
  let sequence=0;const seen=new Map();const replayPath=path.join(path.dirname(auditPath),'atlas-replay.jsonl');
  fs.mkdirSync(path.dirname(replayPath),{recursive:true});
@@ -29,6 +29,7 @@ function createGateway({token,port=7336,upstream='http://127.0.0.1:7331',auditPa
   seen.set(requestId,now);
   if(action!=='health.check'){audit({action:action.slice(0,80),requestId,result:'denied-action'});reply(res,403,{error:'action not authorized'});return}
   if(verifyBuildWiseSession){let authenticated=false;try{authenticated=await verifyBuildWiseSession(bearer.slice(7))}catch{}if(authenticated!==true){audit({action,requestId,result:'denied-buildwise-session'});reply(res,403,{error:'BuildWise session not authorized'});return}}
+  if(authorizeOwner){let approved=false;try{approved=await authorizeOwner({action,requestId})}catch{}if(approved!==true){audit({action,requestId,result:'denied-owner-approval'});reply(res,403,{error:'owner approval denied'});return}}
   try{const r=await fetcher(upstream+'/api/health',{method:'GET',signal:AbortSignal.timeout(3000)});if(!r.ok)throw Error('upstream unavailable');const body=await r.json();audit({action,requestId,result:'success',sequence:++sequence});reply(res,200,{requestId,status:body.ok===true?'healthy':'unhealthy',service:'buildwise',checkedAt:new Date().toISOString()})}
   catch{audit({action,requestId,result:'upstream-failure'});reply(res,503,{error:'health check unavailable',requestId})}
  });
