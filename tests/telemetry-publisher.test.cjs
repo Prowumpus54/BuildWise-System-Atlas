@@ -1,0 +1,10 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {createTelemetryPublisher}=require('../telemetry-publisher.cjs');
+const token='synthetic-transport-token-not-real-123456';
+test('refuses missing remote relay',()=>assert.throws(()=>createTelemetryPublisher({token}),/CONFIGURATION/));
+test('refuses non-HTTPS relays',()=>assert.throws(()=>createTelemetryPublisher({token,endpoint:'http://example.com/ingest'}),/CONFIGURATION/));
+test('refuses missing authentication',()=>assert.throws(()=>createTelemetryPublisher({endpoint:'https://example.com/ingest'}),/CONFIGURATION/));
+test('sends only allowlisted read-only snapshot over TLS',async()=>{let call;const publish=createTelemetryPublisher({endpoint:'https://example.com/ingest',token,readSnapshot:async()=>({source:'BuildWise dispatcher',totalJobs:2,owner:{credentialStatus:'secret'},privateToken:'never-send'}),fetcher:async(url,args)=>{call={url,args};return {ok:true}}});assert.equal((await publish()).delivered,true);assert.equal(call.url,'https://example.com/ingest');const data=JSON.parse(call.args.body);assert.equal(data.totalJobs,2);assert.equal(data.owner,undefined);assert.equal(data.privateToken,undefined);assert.equal(call.args.redirect,'error')});
+test('failed relay response fails closed',async()=>{const publish=createTelemetryPublisher({endpoint:'https://example.com/ingest',token,readSnapshot:async()=>({}),fetcher:async()=>({ok:false})});await assert.rejects(publish(),/DELIVERY_FAILED/)});
+test('refuses oversized payloads',async()=>{const publish=createTelemetryPublisher({endpoint:'https://example.com/ingest',token,readSnapshot:async()=>({jobs:[{id:'x'.repeat(280000)}]}),fetcher:async()=>{throw Error('unexpected network')}});await assert.rejects(publish(),/TOO_LARGE/)});
