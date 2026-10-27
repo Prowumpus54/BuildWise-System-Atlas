@@ -10,6 +10,7 @@ function createTaskerStatus({fetcher=fetch,tokenProvider}={}){
   catch{throw Error('TASKER_UNREACHABLE')}
   if(response.status===401||response.status===403)return Object.freeze({reachable:true,authorized:false});
   if(response.status!==200)throw Error('TASKER_STATUS_UNAVAILABLE');
+  if(!String(response.headers?.get?.('content-type')||'').toLowerCase().includes('application/json'))throw Error('TASKER_UNEXPECTED_RESPONSE');
   // Do not consume the response: inbox data is private and not Atlas telemetry.
   response.body?.cancel?.().catch?.(()=>{});
   return Object.freeze({reachable:true,authorized:true});
