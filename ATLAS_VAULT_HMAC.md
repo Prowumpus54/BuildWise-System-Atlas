@@ -18,13 +18,13 @@ The Windows owner process is hardened before reading the existing desktop HTTP t
 
 The signed receipt proves approval of these bytes, not independent truth of the health observation. The HMAC is not a public-key signature; public receipt verification and any future HMAC verification must use the appropriate distinct mechanisms.
 
-Reviewed SDK files in vendor/buildwise-vault are copied unchanged from BuildWise commit 55c71207e1461d67a345dcc79c3ca93c97121daf. manifest.json records SHA256 hashes normalized to UTF-8/LF and startup verifies them. Source attribution: Prowumpus54/-factory--dashboard, ISC package license; no credential data is included.
+Reviewed SDK files in vendor/buildwise-vault are copied unchanged from BuildWise commit fbd2e4a17158a0578f851eda1e539dfdb3e82d8a (Atlas compatibility commit c9aebe1). Registry parsing accepts typed Tasker metadata, but Atlas reconciliation explicitly requires hmac.sha256 for its own credential. manifest.json records SHA256 hashes normalized to UTF-8/LF and startup verifies them. Source attribution: Prowumpus54/-factory--dashboard, ISC package license; no credential data is included.
 
 ## Validation checkpoint
 
 All 56 Atlas tests passed, including registration/import recovery, legacy-token compatibility and the original signing/receipt/security cases. Tests use synthetic keys and mock HTTP only; they are not Windows Hello enrollment evidence. atlas-vault-preflight.cjs checks the installed immutable host/configuration, desktop health and the credential endpoint's unauthenticated 401 without reading a token, creating keys or showing approval UI.
 
-Actual Atlas app enrollment and snapshot signing remain pending until the owner completes the setup shortcut. Existing BuildWise vault physical lifecycle and populated-store restart tests already passed separately.
+Actual Atlas app enrollment and its first signed snapshot passed on October 27; see the owner-observed evidence below. BuildWise vault physical lifecycle and populated-store restart tests also passed. These historical results do not establish continuous API availability.
 
 Revoke access using the native BuildWise Vault manager: revoke the app, then revoke its credential with owner approval. No general credential export endpoint exists. The public viewer and existing status gateway remain unchanged.
 
@@ -39,3 +39,12 @@ If a saved setup phase is registering or importing, the CLI requests owner-appro
 The saved signed result matches the owner-supplied console output and independently verifies against the installed broker public key. Owner-approved registry inspection confirmed no committed registration. Setup reused the existing CNG identity, registered buildwise-atlas, imported its generated HMAC key and signed the first compact snapshot through the live desktop API. The public connection manifest is ready, credential version 1; the app and credential remain active. No raw secret returned and no provider key used.
 
 Evidence: ATLAS_VAULT_PHYSICAL_ENROLLMENT_20261027.json. This supersedes the pending enrollment statement above. Reopen Connect Atlas to Vault for one newly approved snapshot. Local integration is operational; hosted browser controls, automatic signing, public relay and bearer/OAuth provider adapters remain outside this milestone.
+
+
+## Full vault audit checkpoint - October 28, 2026
+
+The implementer's full audit is recorded in BuildWise docs/VAULT_EVENING_FULL_AUDIT_20261027.md on feature/vault-tasker-status-20261027. Fresh Atlas regression: 56 passed, no failures/skips, 807.1757 ms. The installed SDK compatibility remains HMAC-only for Atlas; it does not activate Tasker or introduce provider tokens.
+
+The installed v7 broker and payload verified, but live integration availability is blocked: the overnight API observation served development version 1.11.2 with vault routes returning 404, and the October 28 morning recheck found no API listener. Do not describe Atlas as currently operational until the installed desktop owns port 7331 and authenticated vault routes verify. Preserve the existing connection manifest, CNG app identity and credential; do not re-enroll to work around an API outage. No new Hello prompts were opened during the audit.
+
+The audit also records an affected BuildWise HTTP parser dependency, Tasker approval-attribution durability and current sandbox/worktree provisioning gaps. No public viewer asset or browser control changed.
