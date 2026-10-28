@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "atlas-vault-preflight",
+  "readOnly": true,
+  "sdkSnapshotVerified": true,
+  "installedConfigurationVerified": true,
+  "desktopHealth": 200,
+  "unauthenticatedCredentialEndpoint": 401,
+  "ownerApprovalRequested": false,
+  "credentialAccess": false,
+  "physicalAtlasEnrollmentPassed": false,
+  "at": "2026-10-28T03:52:46.178Z"
+}

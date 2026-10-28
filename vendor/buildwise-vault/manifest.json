@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "Prowumpus54/-factory--dashboard",
+  "sourceCommit": "55c71207e1461d67a345dcc79c3ca93c97121daf",
+  "normalization": "UTF-8 with LF line endings",
+  "files": [
+    {
+      "name": "protected-credential-client.js",
+      "sha256": "c79ba24ec33aa36750272af20aafac559f05a30d4e51744adc4971b66fb90774"
+    },
+    {
+      "name": "protected-app-identity.js",
+      "sha256": "c863a26b4b3285a460a76d60a1b71ac9f665a3323dbe75ea9864d70a9b4c6a1b"
+    },
+    {
+      "name": "protected-owner-process.js",
+      "sha256": "973907232ff056fd3cf56159002f946219f9c5b3fb40de6e43dab336da0a05da"
+    }
+  ]
+}
