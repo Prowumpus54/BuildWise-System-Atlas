@@ -63,9 +63,9 @@ test('committed import resumes ready; revoked, wrong-key and changed-version sta
  const good=fixture();good.control.apps=[{id:APP,label:'Atlas',state:'active',publicKeyFingerprint:good.control.appFingerprint}];
  good.control.credentials=[{id:good.c.credential,app:APP,label:'Atlas key',state:'active',version:1,operation:'hmac.sha256'}];
  assert.equal((await good.client.reconcile(good.c)).phase,'ready');
- for(const variant of ['revoked-app','wrong-key','revoked-credential','changed-version','foreign-app']){
+ for(const variant of ['revoked-app','wrong-key','revoked-credential','changed-version','foreign-app','changed-kind']){
   const f=fixture();f.control.apps=[{id:APP,label:'Atlas',state:variant==='revoked-app'?'revoked':'active',publicKeyFingerprint:variant==='wrong-key'?'0'.repeat(64):f.control.appFingerprint}];
-  f.control.credentials=[{id:f.c.credential,app:variant==='foreign-app'?'other':APP,label:'Atlas key',state:variant==='revoked-credential'?'revoked':'active',version:variant==='changed-version'?2:1,operation:'hmac.sha256'}];
+  f.control.credentials=[{id:f.c.credential,app:variant==='foreign-app'?'other':APP,label:'Atlas key',state:variant==='revoked-credential'?'revoked':'active',version:variant==='changed-version'?2:1,operation:variant==='changed-kind'?'tasker.status.v1':'hmac.sha256'}];
   await assert.rejects(f.client.reconcile(f.c),undefined,variant);assert.ok(f.requests.every(r=>r[1]==='vault.list'));
  }
 });

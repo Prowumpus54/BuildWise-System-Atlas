@@ -1,7 +1,9 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),{execFile}=require('node:child_process');
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,APP=/^[a-z][a-z0-9-]{0,39}$/,LABEL=/^[A-Za-z0-9 ._-]{1,60}$/;
-const actions=new Set(['app.register','app.revoke','credential.import','credential.rotate','credential.revoke','credential.sign','vault.list','vault.audit']);
+const TASKER_ENDPOINT='https://us-central1-flowwise-fe645.cloudfunctions.net/taskerApi/v1/inbox?limit=1';
+const TASKER_SCOPE=crypto.createHash('sha256').update(JSON.stringify(['TASKER-READ-STATUS-V1','GET',TASKER_ENDPOINT,'reachable,authorized'])).digest('hex');
+const actions=new Set(['app.register','app.revoke','credential.import','credential.rotate','credential.revoke','credential.sign','vault.list','vault.audit','credential.tasker.import','credential.tasker.rotate','credential.tasker.revoke','credential.tasker.status']);
 function publicKey(blob){
  if(!Buffer.isBuffer(blob)||blob.length!==72||blob.readUInt32LE(0)!==0x31534345||blob.readUInt32LE(4)!==32)throw Error('KEY_PIN_INVALID');
  return crypto.createPublicKey({format:'jwk',key:{kty:'EC',crv:'P-256',x:blob.subarray(8,40).toString('base64url'),y:blob.subarray(40).toString('base64url')}});
@@ -13,8 +15,9 @@ function validFields(f,now){
  else if(f[3]!==''||(!['vault.list','vault.audit'].includes(f[1])&&f[4]!==''))throw Error('CREDENTIAL_REQUEST_DENIED');
  if(f[1]==='app.register'){publicKey(Buffer.from(f[5],'base64'));if(!LABEL.test(f[6])||f[7]!==''||f[11]!=='')throw Error('CREDENTIAL_REQUEST_DENIED');}
  else if(f[1]==='app.revoke'||['vault.list','vault.audit'].includes(f[1])){if(f[5]!==''||f[6]!==''||f[7]!==''||f[11]!==''||['vault.list','vault.audit'].includes(f[1])&&(f[2]!=='owner'||! /^(?:0|[1-9][0-9]{0,5})$/.test(f[4])))throw Error('CREDENTIAL_REQUEST_DENIED');}
- else if(f[1]==='credential.import'){if(f[4]!=='1'||!LABEL.test(f[6])||f[7]!==''||f[11]!=='')throw Error('CREDENTIAL_REQUEST_DENIED');}
- else if(f[6]!==''||f[1]!=='credential.sign'&&(f[7]!==''||f[11]!==''))throw Error('CREDENTIAL_REQUEST_DENIED');
+ else if(f[1]==='credential.import'||f[1]==='credential.tasker.import'){if(f[4]!=='1'||!LABEL.test(f[6])||f[7]!==''||f[11]!=='')throw Error('CREDENTIAL_REQUEST_DENIED');}
+ else if(f[6]!==''||!['credential.sign','credential.tasker.status'].includes(f[1])&&(f[7]!==''||f[11]!==''))throw Error('CREDENTIAL_REQUEST_DENIED');
+ if(f[1]==='credential.tasker.status'){const signature=Buffer.from(f[11],'base64');if(f[7]!==TASKER_SCOPE||signature.length!==64||signature.toString('base64')!==f[11])throw Error('TASKER_SCOPE_DENIED');}
  if(f[1]==='credential.sign'){
   const data=Buffer.from(f[7],'base64'),signature=Buffer.from(f[11],'base64');new TextDecoder('utf-8',{fatal:true}).decode(data);
   if(data.length<1||data.length>768||data.toString('base64')!==f[7]||signature.length!==64||signature.toString('base64')!==f[11])throw Error('CREDENTIAL_REQUEST_DENIED');
@@ -29,9 +32,9 @@ function verifyCredentialReceipt({receipt,fields,installationId,publicBlob,start
   if(b[4]!=='approved'){if(b[6]!=='')return null;return {authorized:false,decision:b[4],requestId:fields[8],result:null};}
   const result=JSON.parse(b[6]);
   if(!result||Object.keys(result).sort().join(',')!==(fields[1]==='vault.audit'?'app,apps,audit,auditEntries,credential,credentials,more,page,result,revision':'app,apps,auditEntries,credential,credentials,more,page,result,revision')||result.app!==fields[2]||result.credential!==fields[3]||!Number.isSafeInteger(result.revision)||result.revision<1||result.auditEntries!==result.revision||typeof result.more!=='boolean'||!Number.isSafeInteger(result.page)||!Array.isArray(result.apps)||result.apps.length>4||!Array.isArray(result.credentials)||result.credentials.length>4)return null;
-  if(fields[1]==='credential.sign'){if(Buffer.from(result.result,'base64').length!==32||Buffer.from(result.result,'base64').toString('base64')!==result.result)return null;}else if(result.result!=='')return null;
+  if(fields[1]==='credential.sign'){if(Buffer.from(result.result,'base64').length!==32||Buffer.from(result.result,'base64').toString('base64')!==result.result)return null;}else if(fields[1]==='credential.tasker.status'){const status=JSON.parse(result.result);if(Object.keys(status).sort().join(',')!=='authorized,reachable'||status.reachable!==true||typeof status.authorized!=='boolean'||JSON.stringify({reachable:status.reachable,authorized:status.authorized})!==result.result)return null;}else if(result.result!=='')return null;
   for(const a of result.apps)if(Object.keys(a).sort().join(',')!=='id,label,publicKeyFingerprint,state'||!APP.test(a.id)||!LABEL.test(a.label)||! /^[a-f0-9]{64}$/.test(a.publicKeyFingerprint)||!['active','revoked'].includes(a.state))return null;
-  for(const c of result.credentials)if(Object.keys(c).sort().join(',')!=='app,id,label,operation,state,version'||!APP.test(c.app)||!UUID.test(c.id)||!LABEL.test(c.label)||!Number.isSafeInteger(c.version)||c.version<1||c.operation!=='hmac.sha256'||!['active','revoked'].includes(c.state))return null;
+  for(const c of result.credentials)if(Object.keys(c).sort().join(',')!=='app,id,label,operation,state,version'||!APP.test(c.app)||!UUID.test(c.id)||!LABEL.test(c.label)||!Number.isSafeInteger(c.version)||c.version<1||!['hmac.sha256','tasker.status.v1'].includes(c.operation)||!['active','revoked'].includes(c.state))return null;
   if(['vault.list','vault.audit'].includes(fields[1])&&result.page!==Number(fields[4]))return null;
   if(fields[1]==='vault.audit'){
    if(!Array.isArray(result.audit)||result.audit.length>2)return null;
@@ -70,7 +73,7 @@ function installProtectedCredentials(app,{auth,client=createProtectedCredentialC
 }
 function makeCredentialRequest({action,app,credential='',version='',publicKey='',label='',data='',privateKey,expiresAt=Date.now()+60000}){
  const fields=['BUILDWISE-CREDENTIAL-REQUEST-V1',action,app,credential,String(version),publicKey,label,data,crypto.randomUUID(),crypto.randomBytes(32).toString('base64url'),String(expiresAt),''];
- if(action==='credential.sign'){if(!privateKey)throw Error('App signing key required');fields[11]=crypto.sign('sha256',Buffer.from(JSON.stringify(fields)),{key:privateKey,dsaEncoding:'ieee-p1363'}).toString('base64');}
+ if(action==='credential.sign'||action==='credential.tasker.status'){if(!privateKey)throw Error('App signing key required');fields[11]=crypto.sign('sha256',Buffer.from(JSON.stringify(fields)),{key:privateKey,dsaEncoding:'ieee-p1363'}).toString('base64');}
  return fields;
 }
-module.exports={createProtectedCredentialClient,installProtectedCredentials,verifyCredentialReceipt,makeCredentialRequest,validFields,publicKey};
+module.exports={createProtectedCredentialClient,installProtectedCredentials,verifyCredentialReceipt,makeCredentialRequest,validFields,publicKey,TASKER_SCOPE,TASKER_ENDPOINT};

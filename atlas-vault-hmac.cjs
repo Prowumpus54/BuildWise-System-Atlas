@@ -4,7 +4,7 @@ const APP='buildwise-atlas',PURPOSE='atlas.telemetry.check',BASE='http://127.0.0
 function loadSdk(){
  const dir=path.join(__dirname,'vendor','buildwise-vault'),m=JSON.parse(fs.readFileSync(path.join(dir,'manifest.json')));
  const files=['protected-credential-client.js','protected-app-identity.js','protected-owner-process.js'];
- if(m.sourceCommit!=='55c71207e1461d67a345dcc79c3ca93c97121daf'||m.files.length!==files.length)throw Error('Reviewed BuildWise SDK required');
+ if(m.sourceCommit!=='fbd2e4a17158a0578f851eda1e539dfdb3e82d8a'||m.files.length!==files.length)throw Error('Reviewed BuildWise SDK required');
  for(const name of files){const entry=m.files.find(f=>f.name===name),text=fs.readFileSync(path.join(dir,name),'utf8').replace(/\r\n/g,'\n');if(!entry||crypto.createHash('sha256').update(text).digest('hex')!==entry.sha256)throw Error('BuildWise SDK changed');}
  return {...require('./vendor/buildwise-vault/protected-credential-client.js'),...require('./vendor/buildwise-vault/protected-app-identity.js'),...require('./vendor/buildwise-vault/protected-owner-process.js')};
 }
@@ -66,7 +66,7 @@ function createAtlasVault({tokenProvider,fetcher=fetch,readFile=fs.readFileSync,
   if(app.state!=='active')throw Error('Atlas app was revoked; owner recovery is required');
   const found=await existingIdentity(c);
   if(found.fingerprint!==app.publicKeyFingerprint)throw Error('Atlas app identity does not match the registered key');
-  if(credential&&(credential.app!==APP||credential.state!=='active'||credential.version!==c.version))throw Error('Atlas credential binding changed; owner recovery is required');
+  if(credential&&(credential.app!==APP||credential.state!=='active'||credential.version!==c.version||credential.operation!=='hmac.sha256'))throw Error('Atlas credential binding changed; owner recovery is required');
   return {phase:credential?'ready':'app-registered',appKeyFingerprint:found.fingerprint,publicBlob:found.publicBlob};
  }
  async function checkHealth(){

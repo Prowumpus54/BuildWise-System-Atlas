@@ -13,7 +13,7 @@ function createProtectedAppIdentity({platform=process.platform,programFiles=proc
  function identity(app){if(!/^[a-z][a-z0-9-]{0,39}$/.test(app))throw Error('Invalid app identity');return ['BUILDWISE-APP-IDENTITY-V1',app];}
  async function create(app){const r=await invoke('--app-key-create',identity(app)),blob=Buffer.from(r.publicBlob||'','base64');publicKey(blob);if(r.app!==app||r.privateKeyExportable!==false||r.fingerprint!==crypto.createHash('sha256').update(blob).digest('hex'))throw Error('Invalid app identity');return Object.freeze(r);}
  async function sign(draft){
-  if(!Array.isArray(draft)||draft[1]!=='credential.sign'||draft[11]!=='')throw Error('Unsigned signing request required');
+  if(!Array.isArray(draft)||!['credential.sign','credential.tasker.status'].includes(draft[1])||draft[11]!=='')throw Error('Unsigned signing request required');
   validFields([...draft.slice(0,11),Buffer.alloc(64).toString('base64')],now());
   const signed=await invoke('--app-key-sign',draft);validFields(signed,now());
   if(JSON.stringify(signed.slice(0,11))!==JSON.stringify(draft.slice(0,11)))throw Error('Signing request changed');return signed;
