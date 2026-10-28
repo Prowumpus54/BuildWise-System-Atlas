@@ -1,0 +1,10 @@
+{
+  "kind": "atlas-existing-authentication-preflight",
+  "passed": true,
+  "ownerProcessProtected": true,
+  "authenticatedVaultStatus": true,
+  "credentialOperationRequested": false,
+  "at": "2026-10-28T04:02:43.784Z",
+  "testsPassed": 56,
+  "temporaryTaskRemoved": true
+}

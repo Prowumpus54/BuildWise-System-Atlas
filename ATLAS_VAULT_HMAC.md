@@ -8,7 +8,7 @@ Run connect-atlas-vault.cmd from the real Windows owner desktop. Initial setup a
 
 Run the same shortcut again for a fresh snapshot with one approval. The native review shows the exact canonical message, credential/version, app key fingerprint and message digest. Each operation has a new request ID, nonce and 60-second approval deadline. A status response or enrolled-owner flag never counts as approval.
 
-The public connection manifest is under APPDATA/BuildWiseVaultClients/Atlas/hmac-connection-v1.json. It contains an installation ID, credential ID/version, public key fingerprint and setup phase; no token, secret or private key. Keep it for continuity. Interrupted registration/import with an uncertain response stops for owner review instead of silently retrying or replacing an identity. App names cannot be reused after revocation; recovery/re-enrollment is not automated.
+The public connection manifest is under APPDATA/BuildWiseVaultClients/Atlas/hmac-connection-v1.json. It contains an installation ID, credential ID/version, public key fingerprint and setup phase; no token, secret or private key. Keep it for continuity. Interrupted registration/import is reconciled using an owner-approved, broker-signed registry inspection before continuing. Only missing steps run; revoked, mismatched or missing-key states stop for owner review. App names cannot be reused after revocation; recovery/re-enrollment is not automated.
 
 ## Scope and verification
 
@@ -22,8 +22,14 @@ Reviewed SDK files in vendor/buildwise-vault are copied unchanged from BuildWise
 
 ## Validation checkpoint
 
-All 52 Atlas tests passed, including five new signing/receipt/security cases. Tests use synthetic keys and mock HTTP only; they are not Windows Hello enrollment evidence. atlas-vault-preflight.cjs checks the installed immutable host/configuration, desktop health and the credential endpoint's unauthenticated 401 without reading a token, creating keys or showing approval UI.
+All 56 Atlas tests passed, including registration/import recovery, legacy-token compatibility and the original signing/receipt/security cases. Tests use synthetic keys and mock HTTP only; they are not Windows Hello enrollment evidence. atlas-vault-preflight.cjs checks the installed immutable host/configuration, desktop health and the credential endpoint's unauthenticated 401 without reading a token, creating keys or showing approval UI.
 
 Actual Atlas app enrollment and snapshot signing remain pending until the owner completes the setup shortcut. Existing BuildWise vault physical lifecycle and populated-store restart tests already passed separately.
 
 Revoke access using the native BuildWise Vault manager: revoke the app, then revoke its credential with owner approval. No general credential export endpoint exists. The public viewer and existing status gateway remain unchanged.
+
+## Compatibility correction and recovery
+
+The first installed setup attempt stopped before the broker request because the adapter imposed a 32-character minimum on an existing 24-character desktop token. The token was not changed or exposed. The corrected adapter accepts existing BuildWise session tokens, rejects unsafe/oversized values and checks authenticated status before creating setup state. A real owner-session preflight now passes against the installed desktop, with no credential request or Windows Hello prompt.
+
+If a saved setup phase is registering or importing, the CLI requests owner-approved vault.list pages (at most 32). The broker-signed results determine whether registration/import committed. A committed registration must match the existing CNG identity; an exact active credential/version can resume ready. Absent registration is retried only with the existing app key: a private-key continuity signature is verified against the reopened public key before any registration. Missing keys are never auto-recreated during recovery. The public identity is now saved before the registration request. No connection file or app key was deleted to resolve this failure.

@@ -8,15 +8,27 @@ async function main(){
  function save(c){fs.mkdirSync(dir,{recursive:true});const temp=file+'.tmp';fs.writeFileSync(temp,JSON.stringify(c,null,2)+'\n',{flag:'wx'});fs.renameSync(temp,file);}
  const tokenFile=path.join(process.env.APPDATA,'factorydashboard','data','terminal-token.txt');
  const client=createAtlasVault({tokenProvider:async()=>fs.readFileSync(tokenFile,'utf8').trim()});
+ await client.checkHealth();
  let connection=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):null;
+ const rememberIdentity=async identity=>{connection.appKeyFingerprint=identity.fingerprint;connection.publicBlob=identity.publicBlob;save(connection);};
  if(!connection){
   connection={schemaVersion:1,app:APP,credential:crypto.randomUUID(),version:1,installationId:client.installationId,phase:'registering',createdAt:new Date().toISOString()};
   save(connection);
   console.log('Connect BuildWise Atlas: three local Windows Hello approvals. No provider key is used.');
   console.log('1/3 Register BuildWise Atlas as its own vault app.');
-  connection.appKeyFingerprint=await client.register(connection);connection.phase='app-registered';save(connection);
+  connection.appKeyFingerprint=await client.register(connection,{onIdentity:rememberIdentity});connection.phase='app-registered';save(connection);
  }
  validateConnection(connection,['',client.installationId],{ready:false});
+ if(connection.phase==='registering'||connection.phase==='importing'){
+  console.log('Checking the existing Atlas registry before resuming. Approve the read-only vault inspection.');
+  const recovered=await client.reconcile(connection,{onPage:page=>console.log('Inspect vault registry page '+(page+1)+' with Windows Hello.')});
+  Object.assign(connection,recovered);save(connection);
+  if(connection.phase==='registering'){
+   console.log('No Atlas registration is committed. Reusing the existing app key; approve registration.');
+   connection.appKeyFingerprint=await client.register(connection,{requireExistingIdentity:true,onIdentity:rememberIdentity});
+   connection.phase='app-registered';save(connection);
+  }
+ }
  if(connection.phase==='app-registered'){
   connection.phase='importing';save(connection);
   console.log('2/3 In the native secret window choose Generate secret, Continue, then approve.');

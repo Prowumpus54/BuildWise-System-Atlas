@@ -25,7 +25,7 @@ function createAtlasVault({tokenProvider,fetcher=fetch,readFile=fs.readFileSync,
  SDK.publicKey(Buffer.from(pin[8],'base64'));let busy=false;
  function unchanged(){if(!readFile(file).equals(bytes))throw Error('Vault installation changed');}
  async function http(route,options={}){
-  unchanged();const token=await tokenProvider();if(typeof token!=='string'||token.length<32)throw Error('BuildWise authentication unavailable');
+  unchanged();const token=await tokenProvider();if(typeof token!=='string'||token.length<16||token.length>512||/[\r\n]/.test(token))throw Error('BuildWise authentication unavailable');
   const response=await fetcher(BASE+route,{...options,headers:{'X-Factory-Token':token,'Content-Type':'application/json'},redirect:'error',signal:AbortSignal.timeout(options.method==='POST'?70000:10000)});
   const body=await readJson(response);unchanged();return {response,body};
  }
@@ -37,10 +37,41 @@ function createAtlasVault({tokenProvider,fetcher=fetch,readFile=fs.readFileSync,
   return {...proof,receipt:body.receipt};
  }
  function request(action,c,extra={}){return SDK.makeCredentialRequest({action,app:APP,...(action.startsWith('credential.')?{credential:c.credential,version:c.version}:{}),...extra,expiresAt:now()+60000});}
- async function register(c){
-  validateConnection(c,pin,{ready:false});const publicIdentity=await identity.create(APP);
+ async function existingIdentity(c){
+  const fields=['BUILDWISE-CREDENTIAL-REQUEST-V1','credential.sign',APP,c.credential,String(c.version),'','',Buffer.from('Atlas existing identity continuity check').toString('base64'),crypto.randomUUID(),crypto.randomBytes(32).toString('base64url'),String(now()+60000),''];
+  // Signing opens an existing key only. Missing identity stops before create can be called.
+  const signed=await identity.sign(fields);
+  if(JSON.stringify(signed.slice(0,11))!==JSON.stringify(fields.slice(0,11)))throw Error('Atlas identity proof changed');
+  const found=await identity.create(APP);
+  if(!crypto.verify('sha256',Buffer.from(JSON.stringify(fields)),{key:SDK.publicKey(Buffer.from(found.publicBlob,'base64')),dsaEncoding:'ieee-p1363'},Buffer.from(signed[11],'base64')))throw Error('Atlas identity continuity failed');
+  return found;
+ }
+ async function register(c,{requireExistingIdentity=false,onIdentity=()=>{}}={}){
+  validateConnection(c,pin,{ready:false});const publicIdentity=requireExistingIdentity?await existingIdentity(c):await identity.create(APP);
+  await onIdentity(publicIdentity);
   await operate(request('app.register',c,{publicKey:publicIdentity.publicBlob,label:'BuildWise Atlas snapshot signer'}));
   return publicIdentity.fingerprint;
+ }
+ async function reconcile(c,{onPage=()=>{}}={}){
+  validateConnection(c,pin,{ready:false});let app=null,credential=null,finished=false;
+  for(let page=0;page<32;page++){
+   await onPage(page);
+   const response=await operate(SDK.makeCredentialRequest({action:'vault.list',app:'owner',version:page,expiresAt:now()+60000}));
+   app=app||response.result.apps.find(a=>a.id===APP);
+   credential=credential||response.result.credentials.find(v=>v.id===c.credential);
+   if(!response.result.more){finished=true;break;}
+  }
+  if(!finished)throw Error('Atlas registry inspection exceeded its bound');
+  if(!app){if(credential)throw Error('Atlas registry binding inconsistent');return {phase:'registering'};}
+  if(app.state!=='active')throw Error('Atlas app was revoked; owner recovery is required');
+  const found=await existingIdentity(c);
+  if(found.fingerprint!==app.publicKeyFingerprint)throw Error('Atlas app identity does not match the registered key');
+  if(credential&&(credential.app!==APP||credential.state!=='active'||credential.version!==c.version))throw Error('Atlas credential binding changed; owner recovery is required');
+  return {phase:credential?'ready':'app-registered',appKeyFingerprint:found.fingerprint,publicBlob:found.publicBlob};
+ }
+ async function checkHealth(){
+  const health=await http('/api/health'),vault=await http('/api/vault/status'),v=vault.body;
+  if(health.response.status!==200||health.body.ok!==true||vault.response.status!==200||v.available!==true||v.authenticatedBroker!==true||v.ownerEnrolled!==true||v.privilegedCommandsEnabled!==false||v.ownerApprovalRequired!==true)throw Error('Verified BuildWise and vault health required');
  }
  async function importKey(c){validateConnection(c,pin,{ready:false});if(c.version!==1)throw Error('Initial Atlas credential version must be one');await operate(request('credential.import',c,{label:'Atlas snapshot signing key'}));}
  async function signSnapshot(c,input={}){
@@ -48,8 +79,7 @@ function createAtlasVault({tokenProvider,fetcher=fetch,readFile=fs.readFileSync,
   if(Object.keys(input).some(k=>k!=='requestId')||input.requestId!==undefined&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(input.requestId))throw Error('Bounded Atlas snapshot request required');
   busy=true;
   try{
-   const health=await http('/api/health'),vault=await http('/api/vault/status'),v=vault.body;
-   if(health.response.status!==200||health.body.ok!==true||vault.response.status!==200||v.available!==true||v.authenticatedBroker!==true||v.ownerEnrolled!==true||v.privilegedCommandsEnabled!==false||v.ownerApprovalRequired!==true)throw Error('Verified BuildWise and vault health required');
+   await checkHealth();
    const requestId=input.requestId||crypto.randomUUID();
    const snapshot=JSON.stringify({schemaVersion:1,purpose:PURPOSE,requestId,at:new Date(now()).toISOString(),buildwise:'healthy',vault:'owner-enrolled'});
    const data=Buffer.from(snapshot,'utf8');if(data.length>768)throw Error('Atlas snapshot too large');
@@ -60,6 +90,6 @@ function createAtlasVault({tokenProvider,fetcher=fetch,readFile=fs.readFileSync,
    return Object.freeze({schemaVersion:1,kind:'atlas-vault-hmac-snapshot',requestId,app:APP,credential:c.credential,version:c.version,messageBase64:data.toString('base64'),messageSha256:crypto.createHash('sha256').update(data).digest('hex'),hmacBase64:result.result.result,ownerApproved:true,brokerReceiptVerified:true,receipt:result.receipt,rawSecretReturned:false});
   }finally{busy=false;}
  }
- return Object.freeze({installationId:pin[1],register,importKey,signSnapshot});
+ return Object.freeze({installationId:pin[1],checkHealth,register,reconcile,importKey,signSnapshot});
 }
 module.exports={APP,PURPOSE,loadSdk,validateConnection,createAtlasVault};
