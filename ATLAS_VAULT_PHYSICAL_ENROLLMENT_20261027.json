@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "atlas-owner-observed-vault-enrollment",
+  "passed": true,
+  "app": "buildwise-atlas",
+  "credential": "50bdc2dc-8d82-4e6e-a268-a757b94b1f7c",
+  "version": 1,
+  "requestId": "b761e66b-56b4-4795-9f48-d6baf1e6bf00",
+  "messageSha256": "5d2e376f13b31dc280fc80d3a09af154a20c81a6594ea9d6d1d5363ac73c4f90",
+  "brokerReceiptIndependentlyVerified": true,
+  "brokerPublicKeyFingerprint": "98989aad89e137dbac029c1553920a5ec965dce95c1e02809ce449c2f09cc12d",
+  "persistentConnection": true,
+  "existingAppIdentityPreserved": true,
+  "rawSecretReturned": false,
+  "providerSecretsUsed": false,
+  "hostedWebpageControlEnabled": false,
+  "testsPassed": 56,
+  "at": "2026-10-28T04:05:30.081Z"
+}
